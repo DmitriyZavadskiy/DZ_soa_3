@@ -1,0 +1,83 @@
+services:
+  flight-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: flight
+      POSTGRES_USER: flight
+      POSTGRES_PASSWORD: flight
+
+  flight-flyway:
+    image: flyway/flyway:11-alpine
+    command: -url=jdbc:postgresql://flight-db:5432/flight -user=flight -password=flight -connectRetries=30 migrate
+    volumes:
+      - ./flight/migrations:/flyway/sql
+    depends_on:
+      - flight-db
+
+  booking-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: booking
+      POSTGRES_USER: booking
+      POSTGRES_PASSWORD: booking
+
+  booking-flyway:
+    image: flyway/flyway:11-alpine
+    command: -url=jdbc:postgresql://booking-db:5432/booking -user=booking -password=booking -connectRetries=30 migrate
+    volumes:
+      - ./booking/migrations:/flyway/sql
+    depends_on:
+      - booking-db
+
+  redis-master:
+    image: redis:7-alpine
+
+  redis-replica:
+    image: redis:7-alpine
+    command: redis-server --replicaof redis-master 6379
+    depends_on:
+      - redis-master
+
+  redis-sentinel:
+    image: redis:7-alpine
+    command: sh -c "cp /sentinel.conf /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf"
+    volumes:
+      - ./sentinel.conf:/sentinel.conf
+    depends_on:
+      - redis-master
+      - redis-replica
+
+  flight:
+    build:
+      context: .
+      dockerfile: flight/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://flight:flight@flight-db:5432/flight
+      SENTINEL_HOST: redis-sentinel
+      SENTINEL_PORT: 26379
+      MASTER_NAME: mymaster
+      CACHE_TTL_SECONDS: 300
+      API_KEY: flight-secret-key
+    depends_on:
+      flight-flyway:
+        condition: service_completed_successfully
+
+  booking:
+    build:
+      context: .
+      dockerfile: booking/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://booking:booking@booking-db:5432/booking
+      FLIGHT_ADDRESS: flight:50051
+      API_KEY: flight-secret-key
+      TIMEOUT_SECONDS: 2
+      RETRY_ATTEMPTS: 3
+      RETRY_BASE_MS: 100
+      BREAKER_FAILURES: 5
+      BREAKER_WINDOW_SECONDS: 60
+      BREAKER_OPEN_SECONDS: 15
+    ports:
+      - "8080:8080"
+    depends_on:
+      booking-flyway:
+        condition: service_completed_successfully

@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package flight;
+
+import "google/protobuf/timestamp.proto";
+
+// UNAUTHENTICATED без верного x-api-key в metadata
+service FlightService {
+  // INVALID_ARGUMENT если нет origin или destination
+  rpc SearchFlights(SearchRequest) returns (SearchResponse);
+
+  // INVALID_ARGUMENT если flight_id не uuid
+  // NOT_FOUND если рейса нет
+  rpc GetFlight(GetFlightRequest) returns (Flight);
+
+  // INVALID_ARGUMENT если seat_count меньше 1 или id не uuid
+  // NOT_FOUND если рейса нет
+  // FAILED_PRECONDITION если рейс не SCHEDULED
+  // RESOURCE_EXHAUSTED если мест не хватает
+  rpc ReserveSeats(ReserveRequest) returns (SeatReservation);
+
+  // INVALID_ARGUMENT если booking_id не uuid
+  // NOT_FOUND если резервации нет
+  rpc ReleaseReservation(ReleaseRequest) returns (SeatReservation);
+}
+
+enum FlightStatus {
+  FLIGHT_STATUS_UNSPECIFIED = 0;
+  SCHEDULED = 1;
+  DEPARTED = 2;
+  CANCELLED = 3;
+  COMPLETED = 4;
+}
+
+enum ReservationStatus {
+  RESERVATION_STATUS_UNSPECIFIED = 0;
+  ACTIVE = 1;
+  RELEASED = 2;
+  EXPIRED = 3;
+}
+
+message Flight {
+  string id = 1;
+  string airline = 2;
+  string flight_number = 3;
+  string origin = 4;
+  string destination = 5;
+  google.protobuf.Timestamp departure_time = 6;
+  google.protobuf.Timestamp arrival_time = 7;
+  int32 total_seats = 8;
+  int32 available_seats = 9;
+  string price = 10;
+  FlightStatus status = 11;
+}
+
+message SeatReservation {
+  string id = 1;
+  string flight_id = 2;
+  string booking_id = 3;
+  int32 seat_count = 4;
+  ReservationStatus status = 5;
+}
+
+message SearchRequest {
+  string origin = 1;
+  string destination = 2;
+  optional google.protobuf.Timestamp date = 3;
+}
+
+message SearchResponse {
+  repeated Flight flights = 1;
+}
+
+message GetFlightRequest {
+  string flight_id = 1;
+}
+
+message ReserveRequest {
+  string flight_id = 1;
+  int32 seat_count = 2;
+  string booking_id = 3;
+}
+
+message ReleaseRequest {
+  string booking_id = 1;
+}
